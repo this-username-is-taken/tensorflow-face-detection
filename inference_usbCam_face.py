@@ -41,9 +41,8 @@ class TensoflowFaceDector(object):
         with self.detection_graph.as_default():
             config = tf.ConfigProto()
             config.gpu_options.allow_growth = True
-            with tf.Session(graph=self.detection_graph, config=config) as self.sess:
-
-                self.windowNotSet = True
+            self.sess = tf.Session(graph=self.detection_graph, config=config)
+            self.windowNotSet = True
 
 
     def run(self, image):
