@@ -3,7 +3,6 @@
 # pylint: disable=C0103
 # pylint: disable=E1101
 
-RUN_LOCAL = False
 THRESHOLD = 0.5
 
 import sys
@@ -12,6 +11,8 @@ import numpy as np
 import tensorflow as tf
 import cv2
 import socket
+import traceback
+
 
 from utils import label_map_util
 from utils import visualization_utils_color as vis_util
@@ -98,82 +99,72 @@ if __name__ == "__main__":
 
     write_to_file(LOG_PATH, "Start")
 
-    tDetector = TensoflowFaceDector(PATH_TO_CKPT)
+    try:
+    	tDetector = TensoflowFaceDector(PATH_TO_CKPT)
 
-    cap = cv2.VideoCapture(camID)
-    windowNotSet = True
+    	write_to_file(LOG_PATH, "Tensorflow ready")
+    	cap = cv2.VideoCapture(camID)
+    	windowNotSet = True
 
-    write_to_file(LOG_PATH, "Tensorflow ready")
+    	write_to_file(LOG_PATH, "Cam ready")
+    except:
+        write_to_file(LOG_PATH, "Exception: " + traceback.format_exc())
 
-    ##########################
-    if not RUN_LOCAL:
-        print("Preparing port...")
-        port = 12345
-        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        while port < 20000:
-            try:
-                serversocket.bind(('192.168.1.6', port))
-                break
-            except:
-                port = port + 1
-
-        if port > 19990:
-            print("ERROR: could not find port")
-            exit(-1)
-        print("Waiting on port " + str(port))
-        write_to_file(LOG_PATH, port)
-
-        serversocket.listen(1)
-        connection, address = serversocket.accept()
-        print("Connected with " + str(address))
-        write_to_file(LOG_PATH, "Connected with " + str(address))
-    ##########################
-
+    serversocket = None
 
     while True:
-        ret, image = cap.read()
-        if ret == 0:
-            break
+        try:
+            ##########################
+            if serversocket is None:
+                print("Preparing port...")
+                port = 12345
+                serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                while port < 20000:
+                    try:
+                        serversocket.bind(('192.168.1.6', port))
+                        break
+                    except:
+                        port = port + 1
 
-        [h, w] = image.shape[:2]
-        image = cv2.flip(image, 1)
+                if port > 19990:
+                    print("ERROR: could not find port")
+                    exit(-1)
+                print("Waiting on port " + str(port))
+                write_to_file(LOG_PATH, port)
 
-        (boxes, scores, classes, num_detections) = tDetector.run(image)
+                serversocket.listen(1)
+                connection, address = serversocket.accept()
+                print("Connected with " + str(address))
+                write_to_file(LOG_PATH, "Connected with " + str(address))
+            ##########################
 
-        faces = []
-        for i in range(num_detections):
-            if scores[0][i] > THRESHOLD:
-                faces.append(boxes[0][i])
-
-        ##########################
-        if RUN_LOCAL:
-            vis_util.visualize_boxes_and_labels_on_image_array(
-                image,
-                np.squeeze(boxes),
-                np.squeeze(classes).astype(np.int32),
-                np.squeeze(scores),
-                category_index,
-                use_normalized_coordinates=True,
-                line_thickness=4)
-
-            if windowNotSet is True:
-                cv2.namedWindow("tensorflow based (%d, %d)" % (w, h), cv2.WINDOW_NORMAL)
-                windowNotSet = False
-
-            cv2.imshow("tensorflow based (%d, %d)" % (w, h), image)
-            k = cv2.waitKey(1) & 0xff
-            if k == ord('q') or k == 27:
+            ret, image = cap.read()
+            if ret == 0:
                 break
-        else:
+
+            [h, w] = image.shape[:2]
+            image = cv2.flip(image, 1)
+
+            (boxes, scores, classes, num_detections) = tDetector.run(image)
+
+            faces = []
+            for i in range(num_detections):
+                if scores[0][i] > THRESHOLD:
+                    faces.append(boxes[0][i])
+
+            ##########################
             buf = ""
             for face in faces:
                 buf += " ".join(map(lambda x: str(x), face)) + "|"
             print(buf)
             connection.send(buf)
             write_to_file(LOG_PATH, buf)
-        ##########################
+            ##########################
+        except:
+            write_to_file(LOG_PATH, "Exception: " + traceback.format_exc())
+            serversocket = None
+
 
     cap.release()
+    serversocket.close()
 
-    if not RUN_LOCAL:
-        serversocket.close()
