@@ -5,6 +5,7 @@
 
 import sys
 import time
+import math
 import numpy as np
 import tensorflow as tf
 import cv2
@@ -30,6 +31,7 @@ NUM_CLASSES = 2
 
 jump_window = []
 last_jumped_frame = 0
+last_face = (0, 0, 0, 0)
 JUMP_WINDOW_SIZE = 10
 JUMP_THRESHOLD = 0.05
 JUMP_INTERVAL = 10
@@ -102,14 +104,28 @@ with detection_graph.as_default():
       faces = []
       face_scores = []
       face_classes = []
+      
+      face_closest_y = 0
+      face_dist = 10000
+
       for i in range(num_detections):
           box = boxes[0][i]
           score = scores[0][i]
-          if score > 0.5 and box[1] > 0.4 and box[3] < 0.6:
-              faces.append(box)
-              face_scores.append(score)
-              face_classes.append(1)
-              jump_window.append(box[0])
+          if score > 0.5:
+              dist = 0
+              for j in range(4):
+                  dist += abs(box[j] - last_face[j])
+              print(dist)
+              if box[1] > 0.4 and box[3] < 0.6 and dist < face_dist:
+                  faces.append(box)
+                  face_scores.append(score)
+                  face_classes.append(1)
+                  face_closest_y = box[0]
+
+                  face_dist = dist
+                  last_face = box
+
+      jump_window.append(face_closest_y)
 
       ##########################
       buf = " "
@@ -119,35 +135,33 @@ with detection_graph.as_default():
       out_file.write(buf + "\n")
 
       print(jump_window)
-      
-      if len(faces) > 0:
-        size = len(jump_window)
-        if (size > JUMP_WINDOW_SIZE):
-          jump_window = jump_window[size - 10:size]
-        cur_max = -1
-        cur_min = 2
-        idx_max = -1
-        idx_min = -1
-        idx = 0
-        for jump in jump_window:
-          if jump > cur_max:
-            cur_max = jump
-            idx_max = idx
-          if jump < cur_min:
-            cur_min = jump
-            idx_min = idx
-          idx += 1
 
-        if cur_max - cur_min > JUMP_THRESHOLD and idx_max < idx_min and frame_count - last_jumped_frame > JUMP_INTERVAL:
-          print("JUMP")
-          last_jumped_frame = frame_count
+      size = len(jump_window)
+      if (size > JUMP_WINDOW_SIZE):
+        jump_window = jump_window[size - 10:size]
+      cur_max = -1
+      cur_min = 2
+      idx_max = -1
+      idx_min = -1
+      idx = 0
+      for jump in jump_window:
+        if jump > cur_max:
+          cur_max = jump
+          idx_max = idx
+        if jump < cur_min:
+          cur_min = jump
+          idx_min = idx
+        idx += 1
+
+      if cur_max - cur_min > JUMP_THRESHOLD and idx_max < idx_min and frame_count - last_jumped_frame > JUMP_INTERVAL:
+        print("JUMP")
+        last_jumped_frame = frame_count
 
 
       #print(boxes.shape, boxes)
       #print(scores.shape,scores)
       #print(classes.shape,classes)
       #print(num_detections)
-
 
 
       # Visualization of the results of a detection.
@@ -167,6 +181,8 @@ with detection_graph.as_default():
       k = cv2.waitKey(1) & 0xff
       if k == ord('q') or k == 27:
           break
+      if k == ord('p'):
+          time.sleep(10)
 
 
     cap.release()
